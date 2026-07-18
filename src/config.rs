@@ -1,18 +1,24 @@
 use bevy::feathers::controls::{
-    FeathersButton, FeathersMenu, FeathersMenuButton, FeathersMenuItem, FeathersMenuPopup,
+    FeathersButton, FeathersCheckbox, FeathersMenu, FeathersMenuButton, FeathersMenuItem,
+    FeathersMenuPopup, FeathersSlider,
 };
 use bevy::feathers::theme::ThemeBackgroundColor;
 use bevy::feathers::*;
 use bevy::input_focus::tab_navigation::TabGroup;
 use bevy::prelude::*;
+use bevy::ui::Checked;
 use bevy::ui::InteractionDisabled;
+use bevy::ui_widgets::{SliderPrecision, SliderStep};
 
 use crate::image_selection;
 use crate::microphone::{
     CurrentMicrophoneText, MicrophoneDevices, MicrophoneLevelText, MicrophoneOption,
     select_microphone,
 };
-use crate::puppet_window::{self, OpenPuppetWindowButton};
+use crate::puppet_window::{
+    self, OpenPuppetWindowButton, PuppetSizeDecreaseButton, PuppetSizeIncreaseButton,
+    PuppetSizeSlider,
+};
 
 pub(crate) struct ConfigPlugin;
 
@@ -69,6 +75,54 @@ fn config_window(microphones: Vec<String>, selected_microphone: Option<usize>) -
                 OpenPuppetWindowButton
                 InteractionDisabled
                 on(puppet_window::open_puppet_window)
+            ),
+            Text("Puppet size"),
+            (
+                Node {
+                    width: percent(100),
+                    align_items: AlignItems::Center,
+                    column_gap: px(8),
+                }
+                Children [
+                    (
+                        @FeathersButton {
+                            @caption: bsn! { Text("-") }
+                        }
+                        PuppetSizeDecreaseButton
+                        on(puppet_window::decrease_puppet_size)
+                    ),
+                    (
+                        @FeathersSlider {
+                            @min: puppet_window::MIN_PUPPET_SIZE,
+                            @max: puppet_window::MAX_PUPPET_SIZE,
+                            @value: puppet_window::DEFAULT_PUPPET_SIZE,
+                        }
+                        PuppetSizeSlider
+                        SliderStep(puppet_window::PUPPET_SIZE_STEP)
+                        SliderPrecision(2)
+                        on(puppet_window::set_puppet_size)
+                    ),
+                    (
+                        @FeathersButton {
+                            @caption: bsn! { Text("+") }
+                        }
+                        PuppetSizeIncreaseButton
+                        on(puppet_window::increase_puppet_size)
+                    ),
+                ]
+            ),
+            (
+                @FeathersCheckbox {
+                    @caption: bsn! { Text("Puppet window unlocked") }
+                }
+                Checked
+                on(puppet_window::set_puppet_window_locked)
+            ),
+            (
+                @FeathersCheckbox {
+                    @caption: bsn! { Text("Always on top") }
+                }
+                on(puppet_window::set_puppet_window_always_on_top)
             ),
             Text("Microphone input"),
             (
