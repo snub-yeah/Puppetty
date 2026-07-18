@@ -5,12 +5,14 @@ use bevy::feathers::theme::ThemeBackgroundColor;
 use bevy::feathers::*;
 use bevy::input_focus::tab_navigation::TabGroup;
 use bevy::prelude::*;
+use bevy::ui::InteractionDisabled;
 
-use crate::image_selection::{self, PreviewImage, SelectedImagePath};
+use crate::image_selection;
 use crate::microphone::{
     CurrentMicrophoneText, MicrophoneDevices, MicrophoneLevelText, MicrophoneOption,
     select_microphone,
 };
+use crate::puppet_window::{self, OpenPuppetWindowButton};
 
 pub(crate) struct ConfigPlugin;
 
@@ -60,6 +62,14 @@ fn config_window(microphones: Vec<String>, selected_microphone: Option<usize>) -
                 }
                 on(image_selection::begin_file_selection)
             ),
+            (
+                @FeathersButton {
+                    @caption: bsn! { Text("Open puppet window") }
+                }
+                OpenPuppetWindowButton
+                InteractionDisabled
+                on(puppet_window::open_puppet_window)
+            ),
             Text("Microphone input"),
             (
                 @FeathersMenu
@@ -77,17 +87,7 @@ fn config_window(microphones: Vec<String>, selected_microphone: Option<usize>) -
                     )
                 ]
             ),
-            (Text("Level: -- dBFS") MicrophoneLevelText),
-            (
-                Node {
-                    max_width: px(320),
-                    max_height: px(320),
-                }
-                ImageNode {}
-                PreviewImage
-                SelectedImagePath::default()
-                Visibility::Hidden
-            )
+            (Text("Level: -- dBFS") MicrophoneLevelText)
         ]
     ]
 }

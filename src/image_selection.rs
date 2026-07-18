@@ -1,23 +1,20 @@
 use bevy::prelude::*;
 use bevy::tasks::{AsyncComputeTaskPool, Task, block_on, poll_once};
 use bevy::ui_widgets::Activate;
-use std::path::PathBuf;
 
 pub(crate) struct ImageSelectionPlugin;
 
 impl Plugin for ImageSelectionPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, poll_file_dialog);
+        app.init_resource::<SelectedImage>()
+            .add_systems(Update, poll_file_dialog);
     }
 }
 
-#[derive(Component, Clone, Default)]
-pub(crate) struct SelectedImagePath {
-    path: Option<PathBuf>,
+#[derive(Resource, Default)]
+pub(crate) struct SelectedImage {
+    pub(crate) image: Option<Handle<Image>>,
 }
-
-#[derive(Component, Clone, Default)]
-pub(crate) struct PreviewImage;
 
 #[derive(Component)]
 pub(crate) struct FileDialogTask {
@@ -43,11 +40,9 @@ pub(crate) fn begin_file_selection(
 fn poll_file_dialog(
     mut commands: Commands,
     mut dialogs: Query<(Entity, &mut FileDialogTask)>,
-    preview: Single<(&mut SelectedImagePath, &mut ImageNode, &mut Visibility), With<PreviewImage>>,
+    mut selected_image: ResMut<SelectedImage>,
     asset_server: Res<AssetServer>,
 ) {
-    let (mut selected_image_path, mut image_node, mut visibility) = preview.into_inner();
-
     for (entity, mut dialog) in &mut dialogs {
         let Some(result) = block_on(poll_once(&mut dialog.task)) else {
             continue;
@@ -62,8 +57,6 @@ fn poll_file_dialog(
             .load_builder()
             .override_unapproved()
             .load(file.path().to_string_lossy().to_string());
-        selected_image_path.path = Some(file.path().to_path_buf());
-        image_node.image = handle;
-        *visibility = Visibility::Inherited;
+        selected_image.image = Some(handle);
     }
 }
