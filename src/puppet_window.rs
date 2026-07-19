@@ -4,11 +4,11 @@ use bevy::ui::{Checked, InteractionDisabled};
 use bevy::ui_widgets::{Activate, SliderValue, ValueChange};
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use bevy::window::CompositeAlphaMode;
-use bevy::window::{CursorOptions, WindowClosed, WindowLevel, WindowRef};
+use bevy::window::{
+    CursorOptions, PrimaryWindow, WindowCloseRequested, WindowClosed, WindowLevel, WindowRef,
+};
 
 use crate::image_selection::SelectedImage;
-
-//TODO: on config window close, close this window too
 
 const PUPPET_RENDER_LAYER: usize = 1;
 pub(crate) const MIN_PUPPET_SIZE: f32 = 0.25;
@@ -24,6 +24,7 @@ impl Plugin for PuppetWindowPlugin {
             Update,
             (
                 enable_open_puppet_window_button,
+                close_puppet_window_when_config_closes,
                 cleanup_closed_puppet_window,
                 apply_puppet_window_settings,
             )
@@ -234,20 +235,42 @@ fn cleanup_closed_puppet_window(
     mut commands: Commands,
 ) {
     for closed_window in closed_windows.read() {
-        if state.window != Some(closed_window.window) {
-            continue;
+        if state.window == Some(closed_window.window) {
+            cleanup_puppet_window(&mut state, &mut commands);
         }
-
-        if let Some(camera) = state.camera {
-            commands.entity(camera).try_despawn();
-        }
-        if let Some(sprite) = state.sprite {
-            commands.entity(sprite).try_despawn();
-        }
-        state.window = None;
-        state.camera = None;
-        state.sprite = None;
     }
+}
+
+fn close_puppet_window_when_config_closes(
+    mut close_requests: MessageReader<WindowCloseRequested>,
+    config_windows: Query<(), With<PrimaryWindow>>,
+    mut state: ResMut<PuppetWindowState>,
+    mut commands: Commands,
+) {
+    for close_request in close_requests.read() {
+        if config_windows.get(close_request.window).is_ok() {
+            close_puppet_window(&mut state, &mut commands);
+        }
+    }
+}
+
+fn close_puppet_window(state: &mut PuppetWindowState, commands: &mut Commands) {
+    if let Some(window) = state.window {
+        commands.entity(window).try_despawn();
+    }
+    cleanup_puppet_window(state, commands);
+}
+
+fn cleanup_puppet_window(state: &mut PuppetWindowState, commands: &mut Commands) {
+    if let Some(camera) = state.camera {
+        commands.entity(camera).try_despawn();
+    }
+    if let Some(sprite) = state.sprite {
+        commands.entity(sprite).try_despawn();
+    }
+    state.window = None;
+    state.camera = None;
+    state.sprite = None;
 }
 
 fn clamp_puppet_size(size: f32) -> f32 {
