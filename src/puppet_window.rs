@@ -27,6 +27,8 @@ impl Plugin for PuppetWindowPlugin {
                 close_puppet_window_when_config_closes,
                 cleanup_closed_puppet_window,
                 apply_puppet_window_settings,
+                move_puppet_sprite,
+                apply_puppet_sprite_transform,
             )
                 .chain(),
         );
@@ -44,6 +46,12 @@ pub(crate) struct PuppetSizeIncreaseButton;
 
 #[derive(Component, Clone, Default)]
 pub(crate) struct PuppetSizeSlider;
+
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub(crate) struct PuppetSprite {
+    position: Vec2,
+    rotation: f32,
+}
 
 #[derive(Resource)]
 pub(crate) struct PuppetWindowState {
@@ -65,6 +73,22 @@ impl Default for PuppetWindowState {
             locked: false,
             always_on_top: false,
         }
+    }
+}
+
+fn apply_puppet_sprite_transform(
+    mut sprites: Query<(&PuppetSprite, &mut Transform), Changed<PuppetSprite>>,
+) {
+    for (puppet_sprite, mut transform) in &mut sprites {
+        transform.translation = puppet_sprite.position.extend(transform.translation.z);
+        transform.rotation = Quat::from_rotation_z(puppet_sprite.rotation);
+    }
+}
+
+//temporarily float just to see if it works
+fn move_puppet_sprite(time: Res<Time>, mut sprites: Query<&mut PuppetSprite>) {
+    for mut sprite in &mut sprites {
+        sprite.position.y += 30.0 * time.delta_secs();
     }
 }
 
@@ -133,6 +157,7 @@ pub(crate) fn open_puppet_window(
     let sprite = commands
         .spawn((
             Sprite::from_image(image),
+            PuppetSprite::default(),
             Transform::from_scale(Vec3::splat(state.size)),
             RenderLayers::layer(PUPPET_RENDER_LAYER),
         ))
