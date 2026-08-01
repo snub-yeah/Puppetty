@@ -9,6 +9,7 @@ use bevy::window::{
 };
 
 use crate::image_selection::SelectedImage;
+use crate::microphone::MicrophoneLevel;
 
 const PUPPET_RENDER_LAYER: usize = 1;
 pub(crate) const MIN_PUPPET_SIZE: f32 = 0.25;
@@ -29,6 +30,7 @@ impl Plugin for PuppetWindowPlugin {
                 apply_puppet_window_settings,
                 move_puppet_sprite,
                 apply_puppet_sprite_transform,
+                calculate_transform_based_on_mic_volume
             )
                 .chain(),
         );
@@ -90,6 +92,11 @@ fn move_puppet_sprite(time: Res<Time>, mut sprites: Query<&mut PuppetSprite>) {
     for mut sprite in &mut sprites {
         sprite.position.y += 30.0 * time.delta_secs();
     }
+}
+
+fn calculate_transform_based_on_mic_volume(volume: Res<MicrophoneLevel>) {
+    let volume_value = volume.value.load(std::sync::atomic::Ordering::Relaxed);
+    println!("Mic volume: {}", volume_value)
 }
 
 fn enable_open_puppet_window_button(

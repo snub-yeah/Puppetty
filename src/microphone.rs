@@ -48,7 +48,7 @@ pub(crate) struct MicrophoneCapture {
 
 #[derive(Resource, Clone)]
 pub(crate) struct MicrophoneLevel {
-    value: Arc<AtomicU32>,
+    pub(crate) value: Arc<AtomicU32>,
 }
 
 impl Default for MicrophoneLevel {
