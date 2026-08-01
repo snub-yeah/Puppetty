@@ -21,19 +21,21 @@ pub(crate) struct PuppetWindowPlugin;
 
 impl Plugin for PuppetWindowPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<PuppetWindowState>().add_systems(
-            Update,
-            (
-                enable_open_puppet_window_button,
-                close_puppet_window_when_config_closes,
-                cleanup_closed_puppet_window,
-                apply_puppet_window_settings,
-                move_puppet_sprite,
-                apply_puppet_sprite_transform,
-                calculate_transform_based_on_mic_volume
-            )
-                .chain(),
-        );
+        app.init_resource::<PuppetWindowState>()
+            .init_resource::<TransformInfo>()
+            .add_systems(
+                Update,
+                (
+                    enable_open_puppet_window_button,
+                    close_puppet_window_when_config_closes,
+                    cleanup_closed_puppet_window,
+                    apply_puppet_window_settings,
+                    move_puppet_sprite,
+                    apply_puppet_sprite_transform,
+                    calculate_transform_based_on_mic_volume,
+                )
+                    .chain(),
+            );
     }
 }
 
@@ -53,6 +55,12 @@ pub(crate) struct PuppetSizeSlider;
 pub(crate) struct PuppetSprite {
     position: Vec2,
     rotation: f32,
+}
+
+#[derive(Resource, Default)]
+pub(crate) struct TransformInfo {
+    transform_x_amt: i32,
+    transform_y_amt: i32,
 }
 
 #[derive(Resource)]
@@ -87,16 +95,24 @@ fn apply_puppet_sprite_transform(
     }
 }
 
-//temporarily float just to see if it works
-fn move_puppet_sprite(time: Res<Time>, mut sprites: Query<&mut PuppetSprite>) {
+fn move_puppet_sprite(transform_info: Res<TransformInfo>, mut sprites: Query<&mut PuppetSprite>) {
     for mut sprite in &mut sprites {
-        sprite.position.y += 30.0 * time.delta_secs();
+        sprite.position.y += transform_info.transform_y_amt as f32;
     }
 }
 
-fn calculate_transform_based_on_mic_volume(volume: Res<MicrophoneLevel>) {
+fn calculate_transform_based_on_mic_volume(
+    volume: Res<MicrophoneLevel>,
+    mut transform_info: ResMut<TransformInfo>,
+) {
     let volume_value = volume.value.load(std::sync::atomic::Ordering::Relaxed);
-    println!("Mic volume: {}", volume_value)
+
+    if volume_value > 1000000000 {
+        let increase_amt: i32 = ((volume_value - 1000000000) / 1000000) as i32;
+        transform_info.transform_y_amt = increase_amt;
+    } else {
+        transform_info.transform_y_amt = -10;
+    }
 }
 
 fn enable_open_puppet_window_button(
