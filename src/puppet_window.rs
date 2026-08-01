@@ -16,6 +16,10 @@ pub(crate) const MIN_PUPPET_SIZE: f32 = 0.25;
 pub(crate) const MAX_PUPPET_SIZE: f32 = 3.0;
 pub(crate) const DEFAULT_PUPPET_SIZE: f32 = 1.0;
 pub(crate) const PUPPET_SIZE_STEP: f32 = 0.05;
+pub(crate) const MIN_PUPPET_Y: f32 = -500.0;
+pub(crate) const MAX_PUPPET_Y: f32 = 500.0;
+pub(crate) const DEFAULT_MIN_PUPPET_Y: f32 = -200.0;
+pub(crate) const DEFAULT_MAX_PUPPET_Y: f32 = 200.0;
 
 pub(crate) struct PuppetWindowPlugin;
 
@@ -51,6 +55,12 @@ pub(crate) struct PuppetSizeIncreaseButton;
 #[derive(Component, Clone, Default)]
 pub(crate) struct PuppetSizeSlider;
 
+#[derive(Component, Clone, Default)]
+pub(crate) struct PuppetMinYSlider;
+
+#[derive(Component, Clone, Default)]
+pub(crate) struct PuppetMaxYSlider;
+
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub(crate) struct PuppetSprite {
     position: Vec2,
@@ -71,6 +81,8 @@ pub(crate) struct PuppetWindowState {
     size: f32,
     locked: bool,
     always_on_top: bool,
+    min_y: f32,
+    max_y: f32,
 }
 
 impl Default for PuppetWindowState {
@@ -82,6 +94,8 @@ impl Default for PuppetWindowState {
             size: DEFAULT_PUPPET_SIZE,
             locked: false,
             always_on_top: false,
+            min_y: DEFAULT_MIN_PUPPET_Y,
+            max_y: DEFAULT_MAX_PUPPET_Y,
         }
     }
 }
@@ -95,9 +109,16 @@ fn apply_puppet_sprite_transform(
     }
 }
 
-fn move_puppet_sprite(transform_info: Res<TransformInfo>, mut sprites: Query<&mut PuppetSprite>) {
+fn move_puppet_sprite(
+    transform_info: Res<TransformInfo>,
+    state: Res<PuppetWindowState>,
+    mut sprites: Query<&mut PuppetSprite>,
+) {
     for mut sprite in &mut sprites {
-        sprite.position.y += transform_info.transform_y_amt as f32;
+        //TODO: Might have to do something about it sitting at the top. Maybe it should require some sort of decrease in Y even when at max volume at the top
+        //This would keep the hand-moving effect. Otherwise, it just sits at the top
+        sprite.position.y = (sprite.position.y + transform_info.transform_y_amt as f32)
+            .clamp(state.min_y, state.max_y);
     }
 }
 
@@ -226,6 +247,28 @@ pub(crate) fn set_puppet_size(
         .insert(SliderValue(state.size));
 }
 
+pub(crate) fn set_puppet_min_y(
+    change: On<ValueChange<f32>>,
+    mut state: ResMut<PuppetWindowState>,
+    mut commands: Commands,
+) {
+    state.min_y = clamp_puppet_y(change.value).min(state.max_y);
+    commands
+        .entity(change.source)
+        .insert(SliderValue(state.min_y));
+}
+
+pub(crate) fn set_puppet_max_y(
+    change: On<ValueChange<f32>>,
+    mut state: ResMut<PuppetWindowState>,
+    mut commands: Commands,
+) {
+    state.max_y = clamp_puppet_y(change.value).max(state.min_y);
+    commands
+        .entity(change.source)
+        .insert(SliderValue(state.max_y));
+}
+
 pub(crate) fn set_puppet_window_locked(
     change: On<ValueChange<bool>>,
     mut state: ResMut<PuppetWindowState>,
@@ -325,6 +368,10 @@ fn clamp_puppet_size(size: f32) -> f32 {
     size.clamp(MIN_PUPPET_SIZE, MAX_PUPPET_SIZE)
 }
 
+fn clamp_puppet_y(y: f32) -> f32 {
+    y.clamp(MIN_PUPPET_Y, MAX_PUPPET_Y)
+}
+
 fn window_level(always_on_top: bool) -> WindowLevel {
     if always_on_top {
         WindowLevel::AlwaysOnTop
@@ -342,5 +389,12 @@ mod tests {
         assert_eq!(clamp_puppet_size(0.0), MIN_PUPPET_SIZE);
         assert_eq!(clamp_puppet_size(4.0), MAX_PUPPET_SIZE);
         assert_eq!(clamp_puppet_size(DEFAULT_PUPPET_SIZE), DEFAULT_PUPPET_SIZE);
+    }
+
+    #[test]
+    fn puppet_y_stays_within_supported_range() {
+        assert_eq!(clamp_puppet_y(-600.0), MIN_PUPPET_Y);
+        assert_eq!(clamp_puppet_y(600.0), MAX_PUPPET_Y);
+        assert_eq!(clamp_puppet_y(0.0), 0.0);
     }
 }

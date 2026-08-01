@@ -16,8 +16,8 @@ use crate::microphone::{
     select_microphone,
 };
 use crate::puppet_window::{
-    self, OpenPuppetWindowButton, PuppetSizeDecreaseButton, PuppetSizeIncreaseButton,
-    PuppetSizeSlider,
+    self, OpenPuppetWindowButton, PuppetMaxYSlider, PuppetMinYSlider, PuppetSizeDecreaseButton,
+    PuppetSizeIncreaseButton, PuppetSizeSlider,
 };
 
 pub(crate) struct ConfigPlugin;
@@ -108,6 +108,49 @@ fn config_window(microphones: Vec<String>, selected_microphone: Option<usize>) -
                         }
                         PuppetSizeIncreaseButton
                         on(puppet_window::increase_puppet_size)
+                    ),
+                ]
+            ),
+            Text("Vertical movement range"),
+            (
+                Node {
+                    width: percent(100),
+                    align_items: AlignItems::Center,
+                    column_gap: px(8),
+                }
+                Children [
+                    Text("Lowest"),
+                    (
+                        @FeathersSlider {
+                            @min: puppet_window::MIN_PUPPET_Y,
+                            @max: puppet_window::MAX_PUPPET_Y,
+                            @value: puppet_window::DEFAULT_MIN_PUPPET_Y,
+                        }
+                        PuppetMinYSlider
+                        SliderStep(1.0)
+                        SliderPrecision(0)
+                        on(puppet_window::set_puppet_min_y)
+                    ),
+                ]
+            ),
+            (
+                Node {
+                    width: percent(100),
+                    align_items: AlignItems::Center,
+                    column_gap: px(8),
+                }
+                Children [
+                    Text("Highest"),
+                    (
+                        @FeathersSlider {
+                            @min: puppet_window::MIN_PUPPET_Y,
+                            @max: puppet_window::MAX_PUPPET_Y,
+                            @value: puppet_window::DEFAULT_MAX_PUPPET_Y,
+                        }
+                        PuppetMaxYSlider
+                        SliderStep(1.0)
+                        SliderPrecision(0)
+                        on(puppet_window::set_puppet_max_y)
                     ),
                 ]
             ),
