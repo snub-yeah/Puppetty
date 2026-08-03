@@ -15,7 +15,7 @@ impl Plugin for MicrophonePlugin {
             .init_resource::<MicrophoneLevel>()
             .init_resource::<MicrophoneError>()
             .add_systems(Startup, start_default_microphone)
-            .add_systems(Update, update_microphone_level);
+            .add_systems(Update, update_microphone_level_meter);
     }
 }
 
@@ -28,7 +28,7 @@ pub(crate) struct MicrophoneOption {
 pub(crate) struct CurrentMicrophoneText;
 
 #[derive(Component, Clone, Default)]
-pub(crate) struct MicrophoneLevelText;
+pub(crate) struct MicrophoneLevelMeterFill;
 
 #[derive(Resource)]
 pub(crate) struct MicrophoneDevices {
@@ -251,14 +251,14 @@ where
     device.build_input_stream(
         config,
         move |samples: &[T], _| update_microphone_rms(samples, &level),
-        |stream_error| bevy::log::error!("Microphone input stream error: {stream_error}"),
+        |stream_error| error!("Microphone input stream error: {stream_error}"),
         None,
     )
 }
 
 fn update_microphone_rms<T>(samples: &[T], level: &AtomicU32)
 where
-    T: cpal::Sample,
+    T: Sample,
     f32: cpal::FromSample<T>,
 {
     if samples.is_empty() {
@@ -273,23 +273,40 @@ where
     level.store(rms.to_bits(), Ordering::Relaxed);
 }
 
-fn update_microphone_level(
+fn update_microphone_level_meter(
     level: Res<MicrophoneLevel>,
     capture: Res<MicrophoneCapture>,
     error: Res<MicrophoneError>,
-    mut level_text: Single<&mut Text, With<MicrophoneLevelText>>,
+    mut meter_fill: Single<&mut Node, With<MicrophoneLevelMeterFill>>,
 ) {
-    let text = if let Some(error) = &error.message {
-        format!("Level: {error}")
-    } else if capture.stream.is_some() {
+    let level_percent = if error.message.is_none() && capture.stream.is_some() {
         let rms = f32::from_bits(level.value.load(Ordering::Relaxed));
-        let decibels = 20.0 * rms.max(0.000_01).log10();
-        format!("Level: {decibels:.1} dBFS")
+        ((microphone_level_dbfs(rms).clamp(MIN_MICROPHONE_LEVEL_DBFS, MAX_MICROPHONE_LEVEL_DBFS)
+            - MIN_MICROPHONE_LEVEL_DBFS)
+            / (MAX_MICROPHONE_LEVEL_DBFS - MIN_MICROPHONE_LEVEL_DBFS)
+            * 100.0)
+            .clamp(0.0, 100.0)
     } else {
-        "Level: unavailable".to_string()
+        0.0
     };
 
-    if level_text.0 != text {
-        level_text.0 = text;
+    meter_fill.width = percent(level_percent);
+}
+
+pub(crate) const MIN_MICROPHONE_LEVEL_DBFS: f32 = -80.0;
+pub(crate) const MAX_MICROPHONE_LEVEL_DBFS: f32 = 0.0;
+
+pub(crate) fn microphone_level_dbfs(rms: f32) -> f32 {
+    20.0 * rms.max(0.000_1).log10()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rms_converts_to_meter_decibels() {
+        assert_eq!(microphone_level_dbfs(1.0), 0.0);
+        assert_eq!(microphone_level_dbfs(0.000_1), -80.0);
     }
 }

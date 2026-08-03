@@ -9,7 +9,9 @@ use bevy::window::{
 };
 
 use crate::image_selection::SelectedImage;
-use crate::microphone::MicrophoneLevel;
+use crate::microphone::{
+    MAX_MICROPHONE_LEVEL_DBFS, MIN_MICROPHONE_LEVEL_DBFS, MicrophoneLevel, microphone_level_dbfs,
+};
 
 const PUPPET_RENDER_LAYER: usize = 1;
 pub(crate) const MIN_PUPPET_SIZE: f32 = 0.25;
@@ -20,6 +22,10 @@ pub(crate) const MIN_PUPPET_Y: f32 = -500.0;
 pub(crate) const MAX_PUPPET_Y: f32 = 500.0;
 pub(crate) const DEFAULT_MIN_PUPPET_Y: f32 = -200.0;
 pub(crate) const DEFAULT_MAX_PUPPET_Y: f32 = 200.0;
+pub(crate) const DEFAULT_MINIMUM_INPUT_LEVEL_DBFS: f32 = -45.0;
+pub(crate) const DEFAULT_MAXIMUM_INPUT_LEVEL_DBFS: f32 = -15.0;
+const PUPPET_RESTING_MOVEMENT_PER_FRAME: i32 = -10;
+const MAX_PUPPET_RISE_PER_FRAME: i32 = 10;
 
 pub(crate) struct PuppetWindowPlugin;
 
@@ -61,6 +67,12 @@ pub(crate) struct PuppetMinYSlider;
 #[derive(Component, Clone, Default)]
 pub(crate) struct PuppetMaxYSlider;
 
+#[derive(Component, Clone, Default)]
+pub(crate) struct PuppetMinimumInputLevelSlider;
+
+#[derive(Component, Clone, Default)]
+pub(crate) struct PuppetMaximumInputLevelSlider;
+
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub(crate) struct PuppetSprite {
     position: Vec2,
@@ -83,6 +95,8 @@ pub(crate) struct PuppetWindowState {
     always_on_top: bool,
     min_y: f32,
     max_y: f32,
+    minimum_input_level_dbfs: f32,
+    maximum_input_level_dbfs: f32,
 }
 
 impl Default for PuppetWindowState {
@@ -96,6 +110,8 @@ impl Default for PuppetWindowState {
             always_on_top: false,
             min_y: DEFAULT_MIN_PUPPET_Y,
             max_y: DEFAULT_MAX_PUPPET_Y,
+            minimum_input_level_dbfs: DEFAULT_MINIMUM_INPUT_LEVEL_DBFS,
+            maximum_input_level_dbfs: DEFAULT_MAXIMUM_INPUT_LEVEL_DBFS,
         }
     }
 }
@@ -124,16 +140,15 @@ fn move_puppet_sprite(
 
 fn calculate_transform_based_on_mic_volume(
     volume: Res<MicrophoneLevel>,
+    state: Res<PuppetWindowState>,
     mut transform_info: ResMut<TransformInfo>,
 ) {
-    let volume_value = volume.value.load(std::sync::atomic::Ordering::Relaxed);
-
-    if volume_value > 1000000000 {
-        let increase_amt: i32 = ((volume_value - 1000000000) / 1000000) as i32;
-        transform_info.transform_y_amt = increase_amt;
-    } else {
-        transform_info.transform_y_amt = -10;
-    }
+    let rms = f32::from_bits(volume.value.load(std::sync::atomic::Ordering::Relaxed));
+    transform_info.transform_y_amt = puppet_movement_for_input_level(
+        microphone_level_dbfs(rms),
+        state.minimum_input_level_dbfs,
+        state.maximum_input_level_dbfs,
+    );
 }
 
 fn enable_open_puppet_window_button(
@@ -269,6 +284,30 @@ pub(crate) fn set_puppet_max_y(
         .insert(SliderValue(state.max_y));
 }
 
+pub(crate) fn set_puppet_minimum_input_level(
+    change: On<ValueChange<f32>>,
+    mut state: ResMut<PuppetWindowState>,
+    mut commands: Commands,
+) {
+    state.minimum_input_level_dbfs =
+        clamp_input_level(change.value).min(state.maximum_input_level_dbfs - 1.0);
+    commands
+        .entity(change.source)
+        .insert(SliderValue(state.minimum_input_level_dbfs));
+}
+
+pub(crate) fn set_puppet_maximum_input_level(
+    change: On<ValueChange<f32>>,
+    mut state: ResMut<PuppetWindowState>,
+    mut commands: Commands,
+) {
+    state.maximum_input_level_dbfs =
+        clamp_input_level(change.value).max(state.minimum_input_level_dbfs + 1.0);
+    commands
+        .entity(change.source)
+        .insert(SliderValue(state.maximum_input_level_dbfs));
+}
+
 pub(crate) fn set_puppet_window_locked(
     change: On<ValueChange<bool>>,
     mut state: ResMut<PuppetWindowState>,
@@ -372,6 +411,24 @@ fn clamp_puppet_y(y: f32) -> f32 {
     y.clamp(MIN_PUPPET_Y, MAX_PUPPET_Y)
 }
 
+fn clamp_input_level(level: f32) -> f32 {
+    level.clamp(MIN_MICROPHONE_LEVEL_DBFS, MAX_MICROPHONE_LEVEL_DBFS)
+}
+
+fn puppet_movement_for_input_level(
+    input_level_dbfs: f32,
+    minimum_input_level_dbfs: f32,
+    maximum_input_level_dbfs: f32,
+) -> i32 {
+    if input_level_dbfs <= minimum_input_level_dbfs {
+        return PUPPET_RESTING_MOVEMENT_PER_FRAME;
+    }
+
+    let input_range = maximum_input_level_dbfs - minimum_input_level_dbfs;
+    let amount = ((input_level_dbfs - minimum_input_level_dbfs) / input_range).clamp(0.0, 1.0);
+    (amount * MAX_PUPPET_RISE_PER_FRAME as f32).round() as i32
+}
+
 fn window_level(always_on_top: bool) -> WindowLevel {
     if always_on_top {
         WindowLevel::AlwaysOnTop
@@ -396,5 +453,18 @@ mod tests {
         assert_eq!(clamp_puppet_y(-600.0), MIN_PUPPET_Y);
         assert_eq!(clamp_puppet_y(600.0), MAX_PUPPET_Y);
         assert_eq!(clamp_puppet_y(0.0), 0.0);
+    }
+
+    #[test]
+    fn microphone_input_maps_from_resting_to_maximum_movement() {
+        assert_eq!(puppet_movement_for_input_level(-50.0, -45.0, -15.0), -10);
+        assert_eq!(puppet_movement_for_input_level(-30.0, -45.0, -15.0), 5);
+        assert_eq!(puppet_movement_for_input_level(-10.0, -45.0, -15.0), 10);
+    }
+
+    #[test]
+    fn input_level_stays_within_meter_range() {
+        assert_eq!(clamp_input_level(-100.0), -80.0);
+        assert_eq!(clamp_input_level(10.0), 0.0);
     }
 }

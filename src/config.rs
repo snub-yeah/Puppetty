@@ -12,11 +12,12 @@ use bevy::ui_widgets::{SliderPrecision, SliderStep};
 
 use crate::image_selection;
 use crate::microphone::{
-    CurrentMicrophoneText, MicrophoneDevices, MicrophoneLevelText, MicrophoneOption,
-    select_microphone,
+    CurrentMicrophoneText, MAX_MICROPHONE_LEVEL_DBFS, MIN_MICROPHONE_LEVEL_DBFS, MicrophoneDevices,
+    MicrophoneLevelMeterFill, MicrophoneOption, select_microphone,
 };
 use crate::puppet_window::{
-    self, OpenPuppetWindowButton, PuppetMaxYSlider, PuppetMinYSlider, PuppetSizeDecreaseButton,
+    self, OpenPuppetWindowButton, PuppetMaxYSlider, PuppetMaximumInputLevelSlider,
+    PuppetMinYSlider, PuppetMinimumInputLevelSlider, PuppetSizeDecreaseButton,
     PuppetSizeIncreaseButton, PuppetSizeSlider,
 };
 
@@ -184,7 +185,66 @@ fn config_window(microphones: Vec<String>, selected_microphone: Option<usize>) -
                     )
                 ]
             ),
-            (Text("Level: -- dBFS") MicrophoneLevelText)
+            //TODO: Add some sort of markers/key, so that the units of the min/max config make sense
+            Text("Input level"),
+            (
+                Node {
+                    width: percent(100),
+                    height: px(16),
+                    overflow: Overflow::clip(),
+                }
+                ThemeBackgroundColor(tokens::TEXT_INPUT_BG)
+                Children [(
+                    Node {
+                        width: percent(0),
+                        height: percent(100),
+                    }
+                    ThemeBackgroundColor(tokens::SLIDER_BAR)
+                    MicrophoneLevelMeterFill
+                )]
+            ),
+            (
+                Node {
+                    width: percent(100),
+                    align_items: AlignItems::Center,
+                    column_gap: px(8),
+                }
+                Children [
+                    Text("Minimum input"),
+                    (
+                        @FeathersSlider {
+                            @min: MIN_MICROPHONE_LEVEL_DBFS,
+                            @max: MAX_MICROPHONE_LEVEL_DBFS,
+                            @value: puppet_window::DEFAULT_MINIMUM_INPUT_LEVEL_DBFS,
+                        }
+                        PuppetMinimumInputLevelSlider
+                        SliderStep(1.0)
+                        SliderPrecision(0)
+                        on(puppet_window::set_puppet_minimum_input_level)
+                    ),
+                ]
+            ),
+            (
+                Node {
+                    width: percent(100),
+                    align_items: AlignItems::Center,
+                    column_gap: px(8),
+                }
+                Children [
+                    Text("Maximum input"),
+                    (
+                        @FeathersSlider {
+                            @min: MIN_MICROPHONE_LEVEL_DBFS,
+                            @max: MAX_MICROPHONE_LEVEL_DBFS,
+                            @value: puppet_window::DEFAULT_MAXIMUM_INPUT_LEVEL_DBFS,
+                        }
+                        PuppetMaximumInputLevelSlider
+                        SliderStep(1.0)
+                        SliderPrecision(0)
+                        on(puppet_window::set_puppet_maximum_input_level)
+                    ),
+                ]
+            ),
         ]
     ]
 }
