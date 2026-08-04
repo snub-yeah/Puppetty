@@ -24,8 +24,9 @@ pub(crate) const DEFAULT_MIN_PUPPET_Y: f32 = -200.0;
 pub(crate) const DEFAULT_MAX_PUPPET_Y: f32 = 200.0;
 pub(crate) const DEFAULT_MINIMUM_INPUT_LEVEL_DBFS: f32 = -45.0;
 pub(crate) const DEFAULT_MAXIMUM_INPUT_LEVEL_DBFS: f32 = -15.0;
-const PUPPET_RESTING_MOVEMENT_PER_FRAME: i32 = -10;
-const MAX_PUPPET_RISE_PER_FRAME: i32 = 10;
+const PUPPET_FALL_SPEED: f32 = 600.0;
+const MAX_PUPPET_RISE_SPEED: f32 = 600.0;
+const LOUDNESS_CURVE: f32 = 2.0;
 
 pub(crate) struct PuppetWindowPlugin;
 
@@ -40,9 +41,9 @@ impl Plugin for PuppetWindowPlugin {
                     close_puppet_window_when_config_closes,
                     cleanup_closed_puppet_window,
                     apply_puppet_window_settings,
+                    calculate_transform_based_on_mic_volume,
                     move_puppet_sprite,
                     apply_puppet_sprite_transform,
-                    calculate_transform_based_on_mic_volume,
                 )
                     .chain(),
             );
@@ -81,8 +82,8 @@ pub(crate) struct PuppetSprite {
 
 #[derive(Resource, Default)]
 pub(crate) struct TransformInfo {
-    transform_x_amt: i32,
-    transform_y_amt: i32,
+    target_y: f32,
+    rise_speed: f32,
 }
 
 #[derive(Resource)]
@@ -127,14 +128,18 @@ fn apply_puppet_sprite_transform(
 
 fn move_puppet_sprite(
     transform_info: Res<TransformInfo>,
-    state: Res<PuppetWindowState>,
+    time: Res<Time>,
     mut sprites: Query<&mut PuppetSprite>,
 ) {
     for mut sprite in &mut sprites {
-        //TODO: Might have to do something about it sitting at the top. Maybe it should require some sort of decrease in Y even when at max volume at the top
-        //This would keep the hand-moving effect. Otherwise, it just sits at the top
-        sprite.position.y = (sprite.position.y + transform_info.transform_y_amt as f32)
-            .clamp(state.min_y, state.max_y);
+        let speed = if sprite.position.y < transform_info.target_y {
+            transform_info.rise_speed
+        } else {
+            PUPPET_FALL_SPEED
+        };
+        let maximum_distance = speed * time.delta_secs();
+        let distance_to_target = transform_info.target_y - sprite.position.y;
+        sprite.position.y += distance_to_target.clamp(-maximum_distance, maximum_distance);
     }
 }
 
@@ -144,11 +149,13 @@ fn calculate_transform_based_on_mic_volume(
     mut transform_info: ResMut<TransformInfo>,
 ) {
     let rms = f32::from_bits(volume.value.load(std::sync::atomic::Ordering::Relaxed));
-    transform_info.transform_y_amt = puppet_movement_for_input_level(
+    let transform_ratio = puppet_movement_for_input_level(
         microphone_level_dbfs(rms),
         state.minimum_input_level_dbfs,
         state.maximum_input_level_dbfs,
     );
+    transform_info.target_y = state.min_y.lerp(state.max_y, transform_ratio);
+    transform_info.rise_speed = transform_ratio * MAX_PUPPET_RISE_SPEED;
 }
 
 fn enable_open_puppet_window_button(
@@ -419,14 +426,27 @@ fn puppet_movement_for_input_level(
     input_level_dbfs: f32,
     minimum_input_level_dbfs: f32,
     maximum_input_level_dbfs: f32,
-) -> i32 {
+) -> f32 {
+    get_puppet_transform_ratio(
+        input_level_dbfs,
+        minimum_input_level_dbfs,
+        maximum_input_level_dbfs,
+    )
+    .powf(LOUDNESS_CURVE)
+}
+
+fn get_puppet_transform_ratio(
+    input_level_dbfs: f32,
+    minimum_input_level_dbfs: f32,
+    maximum_input_level_dbfs: f32,
+) -> f32 {
     if input_level_dbfs <= minimum_input_level_dbfs {
-        return PUPPET_RESTING_MOVEMENT_PER_FRAME;
+        return 0.;
     }
 
     let input_range = maximum_input_level_dbfs - minimum_input_level_dbfs;
     let amount = ((input_level_dbfs - minimum_input_level_dbfs) / input_range).clamp(0.0, 1.0);
-    (amount * MAX_PUPPET_RISE_PER_FRAME as f32).round() as i32
+    amount
 }
 
 fn window_level(always_on_top: bool) -> WindowLevel {
@@ -453,13 +473,6 @@ mod tests {
         assert_eq!(clamp_puppet_y(-600.0), MIN_PUPPET_Y);
         assert_eq!(clamp_puppet_y(600.0), MAX_PUPPET_Y);
         assert_eq!(clamp_puppet_y(0.0), 0.0);
-    }
-
-    #[test]
-    fn microphone_input_maps_from_resting_to_maximum_movement() {
-        assert_eq!(puppet_movement_for_input_level(-50.0, -45.0, -15.0), -10);
-        assert_eq!(puppet_movement_for_input_level(-30.0, -45.0, -15.0), 5);
-        assert_eq!(puppet_movement_for_input_level(-10.0, -45.0, -15.0), 10);
     }
 
     #[test]
